@@ -1,4 +1,4 @@
-import { useState } from 'react';
+import { useState, useEffect } from 'react';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 import { Input } from '@/components/ui/input';
@@ -8,70 +8,144 @@ import { Badge } from '@/components/ui/badge';
 import Icon from '@/components/ui/icon';
 import { toast } from '@/components/ui/use-toast';
 
+const API_REGISTER = 'https://functions.poehali.dev/d4ebe6a4-8146-4807-996e-8ad20f412996';
+const API_TASKS = 'https://functions.poehali.dev/58255455-afd3-4767-85b5-f078f4737f57';
+const API_RESULTS = 'https://functions.poehali.dev/5bcc960f-d283-4f19-93a1-002a09673aa8';
+
+interface Task {
+  id: number;
+  question: string;
+  points: number;
+  difficulty_level: string;
+  order_number: number;
+}
+
 const Index = () => {
   const [selectedTab, setSelectedTab] = useState('home');
   const [answers, setAnswers] = useState<{ [key: string]: string }>({});
+  const [tasks, setTasks] = useState<Task[]>([]);
+  const [participantId, setParticipantId] = useState<number | null>(null);
+  const [loading, setLoading] = useState(false);
 
-  const tasks = [
-    {
-      id: 1,
-      question: 'У Маши было 15 конфет. Она съела 7 конфет. Сколько конфет осталось?',
-      correctAnswer: '8',
-      points: 5
-    },
-    {
-      id: 2,
-      question: 'В классе 12 мальчиков и 14 девочек. Сколько всего детей в классе?',
-      correctAnswer: '26',
-      points: 5
-    },
-    {
-      id: 3,
-      question: 'Сколько будет 9 × 8?',
-      correctAnswer: '72',
-      points: 10
-    },
-    {
-      id: 4,
-      question: 'На полке стояло 24 книги. После того, как несколько книг взяли, осталось 18. Сколько книг взяли?',
-      correctAnswer: '6',
-      points: 10
-    },
-    {
-      id: 5,
-      question: 'Периметр квадрата 20 см. Чему равна длина одной стороны?',
-      correctAnswer: '5',
-      points: 15
+  useEffect(() => {
+    fetchTasks();
+  }, []);
+
+  const fetchTasks = async () => {
+    try {
+      const response = await fetch(API_TASKS);
+      const data = await response.json();
+      if (data.tasks) {
+        setTasks(data.tasks);
+      }
+    } catch (error) {
+      console.error('Ошибка загрузки заданий:', error);
+      toast({
+        title: 'Ошибка',
+        description: 'Не удалось загрузить задания',
+        variant: 'destructive'
+      });
     }
-  ];
+  };
 
   const handleAnswerChange = (taskId: number, value: string) => {
     setAnswers({ ...answers, [taskId]: value });
   };
 
-  const checkAnswers = () => {
-    let correct = 0;
-    let totalPoints = 0;
-    
-    tasks.forEach(task => {
-      if (answers[task.id] === task.correctAnswer) {
-        correct++;
-        totalPoints += task.points;
-      }
-    });
+  const checkAnswers = async () => {
+    if (!participantId) {
+      toast({
+        title: 'Требуется регистрация',
+        description: 'Сначала зарегистрируйтесь для участия в олимпиаде',
+        variant: 'destructive'
+      });
+      return;
+    }
 
-    toast({
-      title: `Результат: ${correct} из ${tasks.length}`,
-      description: `Вы набрали ${totalPoints} баллов!`,
-    });
+    setLoading(true);
+    try {
+      const answersArray = Object.entries(answers).map(([taskId, answer]) => ({
+        task_id: parseInt(taskId),
+        answer: answer.trim(),
+        time_spent_seconds: 0
+      }));
+
+      const response = await fetch(API_RESULTS, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json'
+        },
+        body: JSON.stringify({
+          participant_id: participantId,
+          answers: answersArray
+        })
+      });
+
+      const data = await response.json();
+      
+      if (data.success) {
+        toast({
+          title: `Результат: ${data.correct_count} из ${data.total_tasks}`,
+          description: `Вы набрали ${data.total_points} баллов!`,
+        });
+      } else {
+        throw new Error(data.error || 'Ошибка проверки');
+      }
+    } catch (error) {
+      toast({
+        title: 'Ошибка',
+        description: 'Не удалось сохранить результаты',
+        variant: 'destructive'
+      });
+    } finally {
+      setLoading(false);
+    }
   };
 
-  const handleRegistration = (e: React.FormEvent<HTMLFormElement>) => {
+  const handleRegistration = async (e: React.FormEvent<HTMLFormElement>) => {
     e.preventDefault();
-    toast({
-      title: 'Регистрация принята!',
-      description: 'Мы отправим вам информацию об оплате на указанный email.',
-    });
+    setLoading(true);
+
+    const formData = new FormData(e.currentTarget);
+    const registrationData = {
+      student_name: formData.get('student-name') as string,
+      school: formData.get('school') as string,
+      class_name: (formData.get('school') as string).split(',')[1]?.trim() || '3-А',
+      parent_name: formData.get('parent-name') as string,
+      email: formData.get('email') as string,
+      phone: formData.get('phone') as string
+    };
+
+    try {
+      const response = await fetch(API_REGISTER, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json'
+        },
+        body: JSON.stringify(registrationData)
+      });
+
+      const data = await response.json();
+      
+      if (data.success) {
+        setParticipantId(data.participant.id);
+        toast({
+          title: 'Регистрация успешна!',
+          description: data.message,
+        });
+        setSelectedTab('tasks');
+      } else {
+        throw new Error(data.error || 'Ошибка регистрации');
+      }
+    } catch (error) {
+      toast({
+        title: 'Ошибка регистрации',
+        description: error instanceof Error ? error.message : 'Попробуйте другой email',
+        variant: 'destructive'
+      });
+    } finally {
+      setLoading(false);
+    }
   };
 
   return (
@@ -264,6 +338,7 @@ const Index = () => {
                     <Label htmlFor="student-name" className="text-base">Имя и Фамилия ученика</Label>
                     <Input 
                       id="student-name" 
+                      name="student-name"
                       placeholder="Иван Петров" 
                       required 
                       className="text-lg py-6"
@@ -274,6 +349,7 @@ const Index = () => {
                     <Label htmlFor="school" className="text-base">Школа и класс</Label>
                     <Input 
                       id="school" 
+                      name="school"
                       placeholder="Школа №1, 3-А класс" 
                       required 
                       className="text-lg py-6"
@@ -284,6 +360,7 @@ const Index = () => {
                     <Label htmlFor="parent-name" className="text-base">ФИО родителя</Label>
                     <Input 
                       id="parent-name" 
+                      name="parent-name"
                       placeholder="Петров Александр Иванович" 
                       required 
                       className="text-lg py-6"
@@ -294,6 +371,7 @@ const Index = () => {
                     <Label htmlFor="email" className="text-base">Email для связи</Label>
                     <Input 
                       id="email" 
+                      name="email"
                       type="email" 
                       placeholder="example@mail.ru" 
                       required 
@@ -305,6 +383,7 @@ const Index = () => {
                     <Label htmlFor="phone" className="text-base">Телефон</Label>
                     <Input 
                       id="phone" 
+                      name="phone"
                       type="tel" 
                       placeholder="+7 (999) 123-45-67" 
                       required 
@@ -330,9 +409,10 @@ const Index = () => {
                   <Button 
                     type="submit" 
                     size="lg" 
+                    disabled={loading}
                     className="w-full text-lg py-6 bg-gradient-to-r from-primary to-accent"
                   >
-                    Зарегистрироваться и получить ссылку на оплату
+                    {loading ? 'Регистрация...' : 'Зарегистрироваться и получить ссылку на оплату'}
                     <Icon name="ArrowRight" size={20} className="ml-2" />
                   </Button>
                 </form>

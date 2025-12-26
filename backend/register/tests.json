@@ -1,0 +1,28 @@
+{
+  "tests": [
+    {
+      "name": "Успешная регистрация участника",
+      "method": "POST",
+      "path": "/",
+      "body": {
+        "student_name": "Иван Петров",
+        "school": "Школа №1",
+        "class_name": "3-А",
+        "parent_name": "Петров Александр Иванович",
+        "email": "test@example.com",
+        "phone": "+7 (999) 123-45-67"
+      },
+      "expectedStatus": 201,
+      "expectedBody": {
+        "success": true,
+        "message": "string",
+        "participant": {
+          "id": "number",
+          "student_name": "string",
+          "email": "string"
+        }
+      },
+      "bodyMatcher": "partial"
+    }
+  ]
+}

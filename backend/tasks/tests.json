@@ -1,0 +1,15 @@
+{
+  "tests": [
+    {
+      "name": "Получение списка заданий",
+      "method": "GET",
+      "path": "/",
+      "expectedStatus": 200,
+      "expectedBody": {
+        "tasks": "array",
+        "total": "number"
+      },
+      "bodyMatcher": "partial"
+    }
+  ]
+}

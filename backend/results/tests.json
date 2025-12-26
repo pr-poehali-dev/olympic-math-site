@@ -1,0 +1,26 @@
+{
+  "tests": [
+    {
+      "name": "Сохранение результатов участника",
+      "method": "POST",
+      "path": "/",
+      "body": {
+        "participant_id": 1,
+        "answers": [
+          {
+            "task_id": 1,
+            "answer": "8",
+            "time_spent_seconds": 30
+          }
+        ]
+      },
+      "expectedStatus": 200,
+      "expectedBody": {
+        "success": true,
+        "total_points": "number",
+        "correct_count": "number"
+      },
+      "bodyMatcher": "partial"
+    }
+  ]
+}
