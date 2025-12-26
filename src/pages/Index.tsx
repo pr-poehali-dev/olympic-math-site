@@ -20,16 +20,39 @@ interface Task {
   order_number: number;
 }
 
+interface Result {
+  task_id: number;
+  question: string;
+  user_answer: string;
+  is_correct: boolean;
+  points: number;
+}
+
 const Index = () => {
   const [selectedTab, setSelectedTab] = useState('home');
   const [answers, setAnswers] = useState<{ [key: string]: string }>({});
   const [tasks, setTasks] = useState<Task[]>([]);
   const [participantId, setParticipantId] = useState<number | null>(null);
   const [loading, setLoading] = useState(false);
+  const [results, setResults] = useState<Result[]>([]);
+  const [totalPoints, setTotalPoints] = useState(0);
+  const [studentName, setStudentName] = useState('');
 
   useEffect(() => {
     fetchTasks();
+    const savedParticipantId = localStorage.getItem('participantId');
+    const savedStudentName = localStorage.getItem('studentName');
+    if (savedParticipantId) {
+      setParticipantId(parseInt(savedParticipantId));
+      setStudentName(savedStudentName || '');
+    }
   }, []);
+
+  useEffect(() => {
+    if (participantId) {
+      fetchResults();
+    }
+  }, [participantId]);
 
   const fetchTasks = async () => {
     try {
@@ -45,6 +68,21 @@ const Index = () => {
         description: 'Не удалось загрузить задания',
         variant: 'destructive'
       });
+    }
+  };
+
+  const fetchResults = async () => {
+    if (!participantId) return;
+    
+    try {
+      const response = await fetch(`${API_RESULTS}?participant_id=${participantId}`);
+      const data = await response.json();
+      if (data.results) {
+        setResults(data.results);
+        setTotalPoints(data.total_points);
+      }
+    } catch (error) {
+      console.error('Ошибка загрузки результатов:', error);
     }
   };
 
@@ -129,6 +167,9 @@ const Index = () => {
       
       if (data.success) {
         setParticipantId(data.participant.id);
+        setStudentName(data.participant.student_name);
+        localStorage.setItem('participantId', data.participant.id.toString());
+        localStorage.setItem('studentName', data.participant.student_name);
         toast({
           title: 'Регистрация успешна!',
           description: data.message,
@@ -167,7 +208,7 @@ const Index = () => {
 
       <main className="container mx-auto px-4 py-8">
         <Tabs value={selectedTab} onValueChange={setSelectedTab} className="w-full">
-          <TabsList className="grid w-full grid-cols-3 mb-8 h-auto p-1">
+          <TabsList className="grid w-full grid-cols-4 mb-8 h-auto p-1">
             <TabsTrigger value="home" className="text-base py-3">
               <Icon name="Home" size={18} className="mr-2" />
               Главная
@@ -180,6 +221,12 @@ const Index = () => {
               <Icon name="UserPlus" size={18} className="mr-2" />
               Регистрация
             </TabsTrigger>
+            {participantId && (
+              <TabsTrigger value="cabinet" className="text-base py-3">
+                <Icon name="User" size={18} className="mr-2" />
+                Кабинет
+              </TabsTrigger>
+            )}
           </TabsList>
 
           <TabsContent value="home" className="space-y-8">
@@ -443,6 +490,155 @@ const Index = () => {
                   </CardDescription>
                 </CardHeader>
               </Card>
+            </div>
+          </TabsContent>
+
+          <TabsContent value="cabinet" className="space-y-6">
+            <div className="max-w-4xl mx-auto">
+              <div className="flex items-center justify-between mb-8">
+                <div>
+                  <h2 className="text-4xl font-bold mb-2">Личный кабинет</h2>
+                  <p className="text-xl text-muted-foreground">Добро пожаловать, {studentName}!</p>
+                </div>
+                <Button 
+                  variant="outline" 
+                  onClick={() => {
+                    localStorage.removeItem('participantId');
+                    localStorage.removeItem('studentName');
+                    setParticipantId(null);
+                    setStudentName('');
+                    setResults([]);
+                    setSelectedTab('home');
+                  }}
+                >
+                  <Icon name="LogOut" size={18} className="mr-2" />
+                  Выйти
+                </Button>
+              </div>
+
+              <div className="grid md:grid-cols-3 gap-6 mb-8">
+                <Card className="border-2 border-primary/20">
+                  <CardHeader>
+                    <CardTitle className="text-xl flex items-center gap-2">
+                      <Icon name="Target" size={24} className="text-primary" />
+                      Всего баллов
+                    </CardTitle>
+                    <div className="text-5xl font-bold text-primary mt-4">{totalPoints}</div>
+                    <CardDescription className="text-base mt-2">
+                      из 45 возможных
+                    </CardDescription>
+                  </CardHeader>
+                </Card>
+
+                <Card className="border-2 border-accent/20">
+                  <CardHeader>
+                    <CardTitle className="text-xl flex items-center gap-2">
+                      <Icon name="CheckCircle" size={24} className="text-accent" />
+                      Правильных
+                    </CardTitle>
+                    <div className="text-5xl font-bold text-accent mt-4">
+                      {results.filter(r => r.is_correct).length}
+                    </div>
+                    <CardDescription className="text-base mt-2">
+                      из {results.length} ответов
+                    </CardDescription>
+                  </CardHeader>
+                </Card>
+
+                <Card className="border-2 border-secondary/20">
+                  <CardHeader>
+                    <CardTitle className="text-xl flex items-center gap-2">
+                      <Icon name="TrendingUp" size={24} className="text-secondary" />
+                      Результат
+                    </CardTitle>
+                    <div className="text-5xl font-bold text-secondary mt-4">
+                      {results.length > 0 ? Math.round((results.filter(r => r.is_correct).length / results.length) * 100) : 0}%
+                    </div>
+                    <CardDescription className="text-base mt-2">
+                      процент успеха
+                    </CardDescription>
+                  </CardHeader>
+                </Card>
+              </div>
+
+              {results.length > 0 ? (
+                <>
+                  <h3 className="text-3xl font-bold mb-6">Ваши результаты</h3>
+                  <div className="space-y-4">
+                    {results.map((result, index) => (
+                      <Card key={result.task_id} className={`border-2 ${result.is_correct ? 'border-green-200 bg-green-50/50' : 'border-red-200 bg-red-50/50'}`}>
+                        <CardHeader>
+                          <div className="flex items-start justify-between">
+                            <div className="flex-1">
+                              <div className="flex items-center gap-3 mb-3">
+                                <div className={`w-10 h-10 rounded-full flex items-center justify-center text-white font-bold text-lg ${
+                                  result.is_correct ? 'bg-green-500' : 'bg-red-500'
+                                }`}>
+                                  {index + 1}
+                                </div>
+                                <Badge className={result.is_correct ? 'bg-green-500' : 'bg-red-500'}>
+                                  {result.is_correct ? 'Правильно' : 'Неправильно'}
+                                </Badge>
+                                <Badge variant="secondary" className="text-base px-3 py-1">
+                                  {result.is_correct ? result.points : 0} баллов
+                                </Badge>
+                              </div>
+                              <CardTitle className="text-2xl leading-relaxed mb-4">{result.question}</CardTitle>
+                              <div className="space-y-2">
+                                <div className="flex items-center gap-2">
+                                  <span className="font-semibold">Ваш ответ:</span>
+                                  <span className={`text-lg ${result.is_correct ? 'text-green-600 font-bold' : 'text-red-600'}`}>
+                                    {result.user_answer || 'Не отвечено'}
+                                  </span>
+                                </div>
+                              </div>
+                            </div>
+                            {result.is_correct ? (
+                              <Icon name="CheckCircle" size={32} className="text-green-500" />
+                            ) : (
+                              <Icon name="XCircle" size={32} className="text-red-500" />
+                            )}
+                          </div>
+                        </CardHeader>
+                      </Card>
+                    ))}
+                  </div>
+
+                  <Card className="mt-8 border-2 border-primary">
+                    <CardHeader>
+                      <CardTitle className="text-2xl flex items-center gap-2">
+                        <Icon name="Award" size={28} className="text-primary" />
+                        Поздравляем!
+                      </CardTitle>
+                      <CardDescription className="text-lg mt-4">
+                        Вы завершили олимпиаду и набрали {totalPoints} баллов! 
+                        {totalPoints >= 40 && '🏆 Отличный результат!'}
+                        {totalPoints >= 30 && totalPoints < 40 && '🎖️ Хорошая работа!'}
+                        {totalPoints < 30 && '💪 Продолжай тренироваться!'}
+                      </CardDescription>
+                    </CardHeader>
+                  </Card>
+                </>
+              ) : (
+                <Card className="border-2">
+                  <CardHeader>
+                    <CardTitle className="text-2xl">Результаты пока не доступны</CardTitle>
+                    <CardDescription className="text-lg">
+                      Приступите к выполнению заданий, чтобы увидеть свои результаты
+                    </CardDescription>
+                  </CardHeader>
+                  <CardContent>
+                    <Button 
+                      size="lg" 
+                      onClick={() => setSelectedTab('tasks')}
+                      className="bg-gradient-to-r from-primary to-accent"
+                    >
+                      <Icon name="BookOpen" size={20} className="mr-2" />
+                      Перейти к заданиям
+                    </Button>
+                  </CardContent>
+                </Card>
+              )}
             </div>
           </TabsContent>
         </Tabs>
